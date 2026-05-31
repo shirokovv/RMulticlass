@@ -1,0 +1,28 @@
+textID	author	authorID	title	filename
+1	Austen, Jane	JA	Emma	Austen_Emma.txt
+2	Austen, Jane	JA	Pride	Austen_Pride.txt
+3	Austen, Jane	JA	Sense	Austen_Sense.txt
+4	Bronte, Anne	AB	Agnes Grey	ABronte_Agnes.txt
+5	Bronte, Anne	AB	Tentant of Wildfell Hall	ABronte_Tenant.txt
+6	Bronte, Charlotte	CB	Jane Eyre	CBronte_Jane.txt
+7	Bronte, Charlotte	CB	Professor	CBronte_Professor.txt
+8	Bronte, Charlotte	CB	Villette	CBronte_Villette.txt
+9	Bronte, Emily	EB	Wuthering Heights	EBronte_Wuthering.txt
+10	Dickens, Charles	CD	Bleak House	Dickens_Bleak.txt
+11	Dickens, Charles	CD	David Copperfield	Dickens_David.txt
+12	Dickens, Charles	CD	Hard Times	Dickens_Hard.txt
+13	Eliot, George	GE	Adam Bede	Eliot_Adam.txt
+14	Eliot, George	GE	Middlemarch	Eliot_Middlemarch.txt
+15	Eliot, George	GE	The Mill on the Floss	Eliot_Mill.txt
+16	Fielding, Henry	HF	Joseph Andrews	Fielding_Joseph.txt
+17	Fielding, Henry	HF	Tom Jones	Fielding_Tom.txt
+18	Richardson, Samuel	SR	Clarissa, or, the History of a Young Lady	Richardson_Clarissa.txt
+19	Richardson, Samuel	SR	Pamela	Richardson_Pamela.txt
+20	Sterne, Laurence	LS	Tristam Shandy	Sterne_Tristram.txt
+21	Sterne, Laurence	LS	Sentimental	Sterne_Sentimental.txt
+22	Trollope, Antony	AT	Prime Minister	Trollope_Prime.txt
+23	Trollope, Antony	AT	Barchester Towers	Trollope_Barchester.txt
+24	Trollope, Antony	AT	Phineas Finn	Trollope_Phineas.txt
+25	Thackeray, William Makepeace	WT	Vanity Fair	Thackeray_Vanity.txt
+26	Thackeray, William Makepeace	WT	The History of Pendennis	Thackeray_Pendennis.txt
+27	Thackeray, William Makepeace	WT	The Luck of Barry Lyndon	Thackeray_Barry.txt

@@ -1,0 +1,13 @@
+# Raw and prepared texts are not committed.
+british_fiction/*
+!british_fiction/.gitkeep
+
+british_fiction_prepared/*
+!british_fiction_prepared/.gitkeep
+
+# Local R/session noise.
+.Rhistory
+.RData
+.Ruserdata
+
+chunk_tables/

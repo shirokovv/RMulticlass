@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RMulticlass</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.55; color: #1f2328; background: #ffffff; }
+    main { max-width: 920px; margin: 0 auto; padding: 40px 24px 72px; }
+    h1, h2, h3 { line-height: 1.2; margin-top: 1.6em; margin-bottom: 0.6em; }
+    h1 { margin-top: 0; font-size: 2.1rem; }
+    h2 { border-bottom: 1px solid #d8dee4; padding-bottom: 0.3em; }
+    p, ul, pre, table { margin-top: 0; margin-bottom: 1em; }
+    code { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.95em; background: #f6f8fa; padding: 0.15em 0.35em; border-radius: 4px; }
+    pre { overflow-x: auto; background: #f6f8fa; padding: 14px 16px; border-radius: 6px; }
+    pre code { background: transparent; padding: 0; border-radius: 0; }
+    img { max-width: 100%; height: auto; display: block; margin: 12px 0 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 6px 10px; }
+    th { background: #f6f8fa; }
+  </style>
+</head>
+<body>
+<main>
+<h1>RMulticlass</h1>
+<p>Проект строит пайплайн для определения автора английского художественного текста по его фрагментам. Основная идея: текст сначала очищается и разбивается на чанки, затем для каждого чанка строятся признаки, модели обучаются в схеме leave-one-text-out, а предсказания чанков агрегируются обратно в предсказание целого текста.</p>
+<h2>Данные</h2>
+<p>Исходные тексты лежат в <code>british_fiction</code>, метаданные - в <code>metadata.csv</code>. В метаданных хранятся идентификаторы текстов, авторов, названия и имена файлов.</p>
+<p>В пайплайн попадают только авторы, у которых есть минимум два текста. Это нужно, чтобы можно было честно откладывать один текст автора в тестовый фолд, а остальные оставлять в обучении. Иначе мы будем предсказывать не автора, а конкретный текст, будет утечка данных, что неприятно.</p>
+<h2>Предобработка</h2>
+<p>На первом этапе тексты читаются из <code>british_fiction</code>, очищаются и сохраняются в <code>british_fiction_prepared</code> с теми же именами.</p>
+<p>Очистка делает следующее:</p>
+<ul>
+<li>убирает технические заголовки и хвосты Project Gutenberg;</li>
+<li>нормализует кавычки, тире и пробелы;</li>
+<li>удаляет числа;</li>
+<li>делает лемматизацию.</li>
+</ul>
+<p>Сюда вынесена очистка, она применяется к конкретным текстам, не фиттится ни на чём, соответственно, утечки нет.</p>
+<h2>Чанкование</h2>
+<p>После подготовки тексты разбиваются на чанки. Все возможные схемы описаны в <code>config.R</code>, но реально используемые схемы задаются отдельно:</p>
+<pre><code class="language-r">enabled_chunk_names = c(
+  &quot;paragraphs&quot;,
+  &quot;ten_parts&quot;
+)
+</code></pre>
+<p>Сейчас считаются только:</p>
+<ul>
+<li><code>paragraphs</code> - разбиение по абзацам;</li>
+<li><code>ten_parts</code> - каждый текст делится на 10 примерно равных частей.</li>
+</ul>
+<p>Для каждого набора чанков создается отдельная таблица в <code>chunk_tables/chunks</code>.</p>
+<p>Почему так? Потому что пипелин очень долго считается и я не успел всё прогнать. Ради интереса оставлю после сдачи дз.</p>
+<p>Произведён техничесчкий разведывательный анализ данных - результаты лежат в <code>chunk_tables/debug</code></p>
+<h2>Признаки</h2>
+<p>Для каждого чанка заранее считаются признаки <code>f_*</code>. Они не фиттятся, поэтому спокойно считаем вне CV (LOTO).</p>
+<p>Среди них:</p>
+<ul>
+<li>длина чанка в символах, словах, предложениях и абзацах;</li>
+<li>число уникальных слов и символов;</li>
+<li>длины слова;</li>
+<li>признаки длины предложений;</li>
+<li>лексическое разнообразия, энтропия, как много стоп-слов;</li>
+<li>плотность пунктуации, кавычек, тире и других символов;</li>
+<li>доля заглавных букв.</li>
+</ul>
+<p>Эти признаки сохраняются прямо в CSV с чанками.</p>
+<h2>Текстовые признаки</h2>
+<p>Внутри рецептов дополнительно строятся текстовые признаки:</p>
+<ul>
+<li>триграммы слов;</li>
+<li>триграммы символов;</li>
+<li>фичи слов и стоп-слов.</li>
+</ul>
+<p>Для признаков слов и символов используется TF-IDF. Для стопвордовых признаков используется TF.</p>
+<p>Сейчас лимиты сделаны жесткими, чтобы ускорить подготовку:</p>
+<pre><code class="language-r">max_word_ngram_features = 150
+max_char_ngram_features = 150
+max_stopword_features = 50
+</code></pre>
+<h2>Отбор признаков</h2>
+<p>Сейчас используется только один вариант отбора:</p>
+<pre><code class="language-r">pca_loose
+</code></pre>
+<p>Перед PCA все числовые признаки нормализуются. После этого остается максимум 30 PCA-компонент.</p>
+<p>Ранее в пипелине был корреляционный отбор, но сейчас он выключен, тк опять же, не успевает отсчитать.</p>
+<h2>Балансировка и нормализация</h2>
+<p>Балансировка классов выполняется через апсемплинг внутри трейн-части каждого фолда. Тестовый текст в этот шаг не попадает.</p>
+<p>Нормализация также выполняется внутри рецептов. Для PCA она применяется до расчета компонент.</p>
+<h2>Модели</h2>
+<p>Проверяются несколько мультиклассовых моделей:</p>
+<ul>
+<li>multinomial glmnet;</li>
+<li>linear SVM;</li>
+<li>random forest;</li>
+<li>XGBoost;</li>
+<li>MLP.</li>
+</ul>
+<h2>Leave-One-Text-Out</h2>
+<p>Оценка качества строится по схеме leave-one-text-out. В каждом фолде один полный текст откладывается в тест, а модель обучается на всех остальных текстах.</p>
+<p>Это важно, потому что чанки одного текста не должны одновременно попадать и в трейн, и в тест. Иначе модель могла бы видеть похожие фрагменты того же произведения во время обучения.</p>
+<p>Все обучаемые шаги рецептов - TF-IDF, PCA, нормализация, апсемплинг - фиттятся только на трейновой части фолда.</p>
+<h2>Подбор гиперпараметров</h2>
+<p>Для каждой внешней конфигурации запускается перебор гиперпараметров. Размер сетки задается в <code>config.R</code>:</p>
+<pre><code class="language-r">grid_size = 8
+</code></pre>
+<p>Лучшая настройка гиперпараметров выбирается по <code>mn_log_loss</code>:</p>
+<pre><code class="language-r">selection_metric = &quot;mn_log_loss&quot;
+</code></pre>
+<p>Это сделано потому, что при leave-one-text-out macro F1 внутри отдельных фолдов может вести себя нестабильно. Log loss лучше подходит для выбора модели по вероятностям классов.</p>
+<h2>Агрегация чанков в текст</h2>
+<p>Модель сначала предсказывает вероятности авторов для каждого чанка. Затем вероятности усредняются по всем чанкам одного текста. Итоговый автор текста - тот, у кого максимальная средняя вероятность.</p>
+<h2>Метрики и графики</h2>
+<p>После каждого запуска сохраняются:</p>
+<ul>
+<li>строка с метриками в <code>metrics/model_runs.csv</code>;</li>
+<li>график tuning metrics в <code>metrics/plots</code>;</li>
+<li>confusion matrix в <code>metrics/confusion_matrices</code>;</li>
+<li>график корреляций заранее посчитанных <code>f_*</code> признаков в <code>metrics/feature_correlations</code>.</li>
+</ul>
+<p>Основная итоговая метрика для сравнения моделей - text-level macro F1. Дополнительно сохраняются text-level accuracy, chunk-level macro F1, chunk-level accuracy и CV log loss.</p>
+<h2>Воспроизводимость</h2>
+<p>В конфиге задан seed:</p>
+<pre><code class="language-r">seed = 22052026
+</code></pre>
+<p>Он используется при запуске моделирования. При параллельном выполнении отдельные модели могут давать небольшую недетерминированность, но общий пайплайн фиксирует зерно.</p>
+<h2>Результаты</h2>
+<p>На текущий момент в <code>metrics/model_runs.csv</code> есть один актуальный завершенный прогон:</p>
+<pre><code class="language-text">paragraphs__pca_loose__multinom_glmnet
+</code></pre>
+<p>Это модель для чанков по абзацам, с PCA-отбором признаков и multinomial glmnet.</p>
+<h3>Использованные признаки</h3>
+<p>Модель обучалась на 30 PCA-компонентах. Эти компоненты строились внутри каждого трейнового фолда после нормализации всех числовых признаков.</p>
+<p>В PCA входили следующие группы признаков:</p>
+<ul>
+<li><code>word trigrams TF-IDF</code> - TF-IDF по словесным триграммам, максимум 150 признаков;</li>
+<li><code>character trigrams TF-IDF</code> - TF-IDF по символьным триграммам, максимум 150 признаков;</li>
+<li><code>stopword TF</code> - частоты служебных слов, максимум 50 признаков;</li>
+<li>заранее посчитанные числовые признаки чанков <code>f_*</code>.</li>
+</ul>
+<p>Список <code>f_*</code> признаков:</p>
+<ul>
+<li><code>f_n_chars</code> - число символов;</li>
+<li><code>f_n_letters</code> - число латинских букв;</li>
+<li><code>f_n_digits</code> - число цифр;</li>
+<li><code>f_n_spaces</code> - число пробельных символов;</li>
+<li><code>f_n_lines</code> - число строк;</li>
+<li><code>f_n_paragraphs</code> - число абзацев;</li>
+<li><code>f_n_sentences</code> - число предложений;</li>
+<li><code>f_n_words</code> - число слов;</li>
+<li><code>f_n_unique_words</code> - число уникальных слов;</li>
+<li><code>f_n_unique_chars</code> - число уникальных символов;</li>
+<li><code>f_unique_word_ratio</code> - доля уникальных слов;</li>
+<li><code>f_unique_char_ratio</code> - доля уникальных символов;</li>
+<li><code>f_mean_word_len</code> - средняя длина слова;</li>
+<li><code>f_median_word_len</code> - медианная длина слова;</li>
+<li><code>f_min_word_len</code> - минимальная длина слова;</li>
+<li><code>f_max_word_len</code> - максимальная длина слова;</li>
+<li><code>f_var_word_len</code> - дисперсия длины слов;</li>
+<li><code>f_q25_word_len</code> - первый квартиль длины слов;</li>
+<li><code>f_q75_word_len</code> - третий квартиль длины слов;</li>
+<li><code>f_mean_sentence_words</code> - среднее число слов в предложении;</li>
+<li><code>f_median_sentence_words</code> - медианное число слов в предложении;</li>
+<li><code>f_var_sentence_words</code> - дисперсия длины предложений;</li>
+<li><code>f_short_word_ratio</code> - доля коротких слов;</li>
+<li><code>f_long_word_ratio</code> - доля длинных слов;</li>
+<li><code>f_short_sentence_ratio</code> - доля коротких предложений;</li>
+<li><code>f_long_sentence_ratio</code> - доля длинных предложений;</li>
+<li><code>f_ttr</code> - отношение числа уникальных слов к общему числу слов;</li>
+<li><code>f_hapax_ratio</code> - доля слов, встретившихся один раз;</li>
+<li><code>f_word_entropy</code> - энтропия распределения слов;</li>
+<li><code>f_char_entropy</code> - энтропия распределения символов;</li>
+<li><code>f_stopword_density</code> - доля служебных слов;</li>
+<li><code>f_repeated_word_ratio</code> - доля повторов соседних слов;</li>
+<li><code>f_punct_density</code> - плотность пунктуации;</li>
+<li><code>f_dot_density</code> - плотность точек;</li>
+<li><code>f_comma_density</code> - плотность запятых;</li>
+<li><code>f_colon_density</code> - плотность двоеточий;</li>
+<li><code>f_semicolon_density</code> - плотность точек с запятой;</li>
+<li><code>f_question_density</code> - плотность вопросительных знаков;</li>
+<li><code>f_exclamation_density</code> - плотность восклицательных знаков;</li>
+<li><code>f_quote_density</code> - плотность кавычек;</li>
+<li><code>f_dash_density</code> - плотность дефисов и тире;</li>
+<li><code>f_bracket_density</code> - плотность скобок;</li>
+<li><code>f_ellipsis_density</code> - плотность многоточий;</li>
+<li><code>f_uppercase_ratio</code> - доля заглавных букв среди букв;</li>
+<li><code>f_non_alnum_ratio</code> - доля небуквенно-цифровых символов.</li>
+</ul>
+<p>Итоговые предикторы модели: <code>PC1</code> ... <code>PC30</code>.</p>
+<h3>Модель и гиперпараметры</h3>
+<p>Использованная модель:</p>
+<pre><code class="language-text">multinom_glmnet
+</code></pre>
+<p>Лучшие гиперпараметры выбирались по <code>mn_log_loss</code>:</p>
+<pre><code class="language-text">penalty = 1e-10
+mixture = 0.3214
+best_config = pre0_mod1_post0
+</code></pre>
+<p><code>penalty = 1e-10</code> означает почти отсутствующую регуляризацию. <code>mixture = 0.3214</code> задает смесь L1/L2-регуляризации в glmnet.</p>
+<h3>Метрики</h3>
+<p>Текущие метрики:</p>
+<table>
+<thead>
+<tr>
+<th>Метрика</th>
+<th align="right">Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cv_log_loss_mean</code></td>
+<td align="right">0.184</td>
+</tr>
+<tr>
+<td><code>cv_macro_f1_mean</code></td>
+<td align="right">1.000</td>
+</tr>
+<tr>
+<td><code>chunk_macro_f1</code></td>
+<td align="right">0.669</td>
+</tr>
+<tr>
+<td><code>chunk_accuracy</code></td>
+<td align="right">0.235</td>
+</tr>
+<tr>
+<td><code>text_macro_f1</code></td>
+<td align="right">0.899</td>
+</tr>
+<tr>
+<td><code>text_accuracy</code></td>
+<td align="right">0.923</td>
+</tr>
+</tbody>
+</table>
+<p>Такая схема оценки нормальна для этой задачи, потому что модель проверяется на полностью отложенном тексте. Чанки одного и того же текста не разлетаются между трейном и тестом, поэтому модель не видит фрагменты проверяемого произведения во время обучения.</p>
+<h3>Графики</h3>
+<p>Tuning metrics:</p>
+<p><img src="metrics/plots/paragraphs__pca_loose__multinom_glmnet.png" alt="Tuning metrics" /></p>
+<p>Confusion matrix:</p>
+<p><img src="metrics/confusion_matrices/paragraphs__pca_loose__multinom_glmnet.png" alt="Confusion matrix" /></p>
+<p>Корреляции признаков:</p>
+<p><img src="metrics/feature_correlations/paragraphs__pca_loose__multinom_glmnet.png" alt="Feature correlations" /></p>
+<h3>Важность признаков</h3>
+<p>В PCA важность не считал (сложно интерпретировать), но в целом важность признаков посчитана (хотелось бы SHAP, но не успелось).
+Вот так считается некоторая важность фич:</p>
+<ul>
+<li>для каждого фолда берется только трейновая часть. Для каждого признака считается абсолютная корреляция с каждым автором, затем эти значения усредняются по авторам и по фолдам. На графике показаны признаки с наибольшей средней абсолютной корреляцией. По описанию выше что за фичи что значат можно понять, что число уникальных слов оч сильно коррелирует, и в общем параметры, связанные с уникальными словами и символами довольно высоко в топе + выбивается количество цитат. Это можно назвать стилистическими особенностями, какие-то особенности языка автора и стиля написания.</li>
+</ul>
+<p>Но опять же это не фактическая важность фич для моделей, а просто прикидка на корреляциях.</p>
+<p>Хотелось бы какие-нибудь pos-фичи нагенерить и на них прогнать + темы и тп, но препроцессинг и так очень долгий, это проблема.</p>
+<p>Если нужна одна хорошая модель для a-ля продакшена, можно взять конфиг из таблицы model_runs и обучить на всех текстах, качество мы приблизительно, хоть и немного оптимистично, посичтали (нельзя сделать nested_cv, и так некоторые авторы слишком мало раз представлены).</p>
+<p>Основное ограничение, что мы выкинули Emily Bronte, но с ней ничего было нельзя сделать - мы бы могли ток этот конкретный текст предсказывать, ничего более, это неправильно. Опять же, можно какую-нибудь бинарную классификацию запилить типа это Эмили Бронте или нет, сделать простой ансамбль, но не хватило времени.</p>
+<h3>Выводы</h3>
+<p>В целом, чанкование на абзацы и LOTO хорошо работают, мы уверены, что выделяем именно авторские особенности, а не шум. Мы берём стилистические фичи, можем довольно точно предсказывать автора по тексту.</p>
+<p>Пока писал текст, отсчиталось следующее разбиение на чанки (на 10 равных), результаты есть в табличке model_runs и корреляции под них там же.
+Матрицы корреляций в той же папке где обычно. Цифры там гораздо приятнее)) Там macro accuracy 0.96, а macro f1 0.95. Как-то так, посмотрим, как досчитает, возможно, добавлю.</p>
+
+<p>Код писался в том числе с использованием LLM, но пипелин взят полностью из головы, писались в основном отдельные функции и я старался их отсматривать.</p>
+
+</main>
+</body>
+</html>
